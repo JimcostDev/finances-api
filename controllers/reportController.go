@@ -158,6 +158,14 @@ func UpdateReport(c *fiber.Ctx) error {
 			JSON(fiber.Map{"error": "Error al parsear JSON"})
 	}
 
+	// Asignar un nuevo ObjectID a cada ingreso y gasto
+	for i := range req.Ingresos {
+		req.Ingresos[i].ID = primitive.NewObjectID()
+	}
+	for i := range req.Gastos {
+		req.Gastos[i].ID = primitive.NewObjectID()
+	}
+
 	totalIngresoBruto := 0.0
 	for _, inc := range req.Ingresos {
 		totalIngresoBruto += inc.Monto
