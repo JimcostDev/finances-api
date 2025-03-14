@@ -19,9 +19,9 @@ func main() {
 	// Configurar las rutas
 	routes.SetupRoutes(app)
 
-	// Ruta de prueba
-	app.Get("/api/hello", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"message": "Hello, World!"})
+	// Hola Mundo
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"message": "Hola Mundo"})
 	})
 
 	// Endpoint para mostrar la lista de rutas
