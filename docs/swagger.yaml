@@ -1,0 +1,15 @@
+info:
+  contact:
+    email: jimcostdev@gmail.com
+    name: Soporte API
+    url: https://www.jimcostdev.com
+  description: API para gestión de finanzas personales
+  title: API de Finanzas Personales
+  version: "1.0"
+paths: {}
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

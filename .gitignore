@@ -1,0 +1,36 @@
+# Go binaries
+/bin/
+/obj/
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Dependency directories
+/vendor/
+
+# Golang build output
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+
+# Fiber log files
+/log/
+
+# MongoDB files
+*.db
+*.log
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
