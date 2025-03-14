@@ -1,25 +1,13 @@
-// @title API de Finanzas Personales
-// @version 1.0
-// @description API para gestión de finanzas personales
-// @contact.name Soporte API
-// @contact.url https://www.jimcostdev.com
-// @contact.email jimcostdev@gmail.com
-// @securityDefinitions.apikey BearerAuth
-// @in header
-// @name Authorization
-// @host localhost:3000
-// @BasePath /api
 package main
 
 import (
+	"fmt"
 	"log"
+	"strings"
 
 	"github.com/JimcostDev/finances-api/config"
 	"github.com/JimcostDev/finances-api/routes"
-
-	_ "github.com/JimcostDev/finances-api/docs"
 	"github.com/gofiber/fiber/v2"
-	fiberSwagger "github.com/swaggo/fiber-swagger"
 )
 
 func main() {
@@ -31,8 +19,30 @@ func main() {
 	// Configurar las rutas
 	routes.SetupRoutes(app)
 
-	// Ruta para Swagger
-	app.Get("/swagger/*", fiberSwagger.WrapHandler)
+	// Ruta de prueba
+	app.Get("/api/hello", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"message": "Hello, World!"})
+	})
+
+	// Endpoint para mostrar la lista de rutas
+	app.Get("api/routes", func(c *fiber.Ctx) error {
+		html := generateRoutesHTML(app.GetRoutes())
+		c.Set("Content-Type", "text/html")
+		return c.SendString(html)
+	})
 
 	log.Fatal(app.Listen(":3000"))
+}
+
+func generateRoutesHTML(routes []fiber.Route) string {
+	var html strings.Builder
+	html.WriteString("<h1>Lista de Endpoints</h1>")
+	html.WriteString("<ul>")
+
+	for _, route := range routes {
+		html.WriteString(fmt.Sprintf("<li>%s %s</li>", route.Method, route.Path))
+	}
+
+	html.WriteString("</ul>")
+	return html.String()
 }

@@ -13,6 +13,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// Register crea un nuevo usuario en la base de datos
 func Register(c *fiber.Ctx) error {
 	user := new(models.User)
 	if err := c.BodyParser(user); err != nil {
@@ -36,6 +37,7 @@ func Register(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(user)
 }
 
+// Login permite a un usuario iniciar sesión en la aplicación
 func Login(c *fiber.Ctx) error {
 	// Estructura para parsear la petición de login
 	type LoginRequest struct {
