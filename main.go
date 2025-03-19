@@ -1,9 +1,7 @@
 package main
 
 import (
-	"fmt"
 	"log"
-	"strings"
 
 	"github.com/JimcostDev/finances-api/config"
 	"github.com/JimcostDev/finances-api/routes"
@@ -31,25 +29,5 @@ func main() {
 		return c.JSON(fiber.Map{"message": "Hola Mundo"})
 	})
 
-	// Endpoint para mostrar la lista de rutas
-	app.Get("api/routes", func(c *fiber.Ctx) error {
-		html := generateRoutesHTML(app.GetRoutes())
-		c.Set("Content-Type", "text/html")
-		return c.SendString(html)
-	})
-
 	log.Fatal(app.Listen(":3000"))
-}
-
-func generateRoutesHTML(routes []fiber.Route) string {
-	var html strings.Builder
-	html.WriteString("<h1>Lista de Endpoints</h1>")
-	html.WriteString("<ul>")
-
-	for _, route := range routes {
-		html.WriteString(fmt.Sprintf("<li>%s %s</li>", route.Method, route.Path))
-	}
-
-	html.WriteString("</ul>")
-	return html.String()
 }

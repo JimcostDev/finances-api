@@ -10,14 +10,53 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v4"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/crypto/bcrypt"
 )
 
-// Register crea un nuevo usuario en la base de datos
+// Register crea un nuevo usuario en la base de datos, validando que el email y username sean únicos.
 func Register(c *fiber.Ctx) error {
-	user := new(models.User)
-	if err := c.BodyParser(user); err != nil {
+	// Define un struct de solicitud para parsear el JSON
+	type RegisterRequest struct {
+		Email           string `json:"email"`
+		Username        string `json:"username"`
+		Fullname        string `json:"fullname"`
+		Password        string `json:"password"`
+		ConfirmPassword string `json:"confirm_password"`
+	}
+
+	var req RegisterRequest
+	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Error al parsear JSON"})
+	}
+
+	// Validar que las contraseñas coincidan
+	if req.Password != req.ConfirmPassword {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Las contraseñas no coinciden"})
+	}
+
+	// Crea un usuario sin incluir confirm_password
+	user := models.User{
+		Email:    req.Email,
+		Username: req.Username,
+		Fullname: req.Fullname,
+		Password: req.Password, // Se hasheará a continuación
+	}
+
+	collection := config.DB.Collection("users")
+	// Verificar si ya existe un usuario con el mismo email o username
+	filter := bson.M{
+		"$or": []bson.M{
+			{"email": user.Email},
+			{"username": user.Username},
+		},
+	}
+	var existingUser models.User
+	err := collection.FindOne(context.Background(), filter).Decode(&existingUser)
+	if err == nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "El email o el username ya existen"})
+	} else if err != mongo.ErrNoDocuments {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Error al validar usuario existente"})
 	}
 
 	// Hashear la contraseña
@@ -29,11 +68,12 @@ func Register(c *fiber.Ctx) error {
 	user.CreatedAt = time.Now()
 	user.UpdatedAt = time.Now()
 
-	collection := config.DB.Collection("users")
 	_, err = collection.InsertOne(context.Background(), user)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Error al insertar el usuario"})
 	}
+	// No se devuelve la contraseña
+	user.Password = ""
 	return c.Status(fiber.StatusCreated).JSON(user)
 }
 

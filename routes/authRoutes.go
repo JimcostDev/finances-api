@@ -1,4 +1,3 @@
-// routes/authRoutes.go
 package routes
 
 import (
@@ -8,7 +7,7 @@ import (
 )
 
 func AuthRoutes(app *fiber.App) {
-	api := app.Group("/api/")
+	api := app.Group("/api/auth/")
 	api.Post("/register", handlers.Register)
 	api.Post("/login", handlers.Login)
 }
