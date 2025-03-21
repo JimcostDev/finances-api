@@ -9,6 +9,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -117,9 +118,8 @@ func UpdateUser(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "Usuario actualizado correctamente"})
 }
 
-// DeleteUser elimina un usuario
+// DeleteUser elimina un usuario y todos sus reportes
 func DeleteUser(c *fiber.Ctx) error {
-	// Obtener el userID desde el token
 	userID, ok := c.Locals("userID").(string)
 	if !ok || userID == "" {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Usuario no autenticado"})
@@ -130,11 +130,46 @@ func DeleteUser(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "ID inválido"})
 	}
 
-	collection := config.DB.Collection("users")
-	result, err := collection.DeleteOne(context.Background(), bson.M{"_id": objID})
-	if err != nil || result.DeletedCount == 0 {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Error al eliminar usuario o usuario no encontrado"})
+	// Obtener cliente MongoDB desde la configuración
+	client := config.GetClient()
+
+	// Crear sesión
+	session, err := client.StartSession()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Error al iniciar sesión"})
+	}
+	defer session.EndSession(context.Background())
+
+	// Transacción
+	err = mongo.WithSession(context.Background(), session, func(sessionContext mongo.SessionContext) error {
+		if err := session.StartTransaction(); err != nil {
+			return err
+		}
+
+		// 1. Eliminar usuario
+		usersCollection := config.DB.Collection("users")
+		if _, err := usersCollection.DeleteOne(sessionContext, bson.M{"_id": objID}); err != nil {
+			session.AbortTransaction(sessionContext)
+			return err
+		}
+
+		// 2. Eliminar reportes
+		reportsCollection := config.DB.Collection("reports")
+		if _, err := reportsCollection.DeleteMany(sessionContext, bson.M{"user_id": objID}); err != nil {
+			session.AbortTransaction(sessionContext)
+			return err
+		}
+
+		return session.CommitTransaction(sessionContext)
+	})
+
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Error en transacción: " + err.Error(),
+		})
 	}
 
-	return c.JSON(fiber.Map{"message": "Usuario eliminado correctamente"})
+	return c.JSON(fiber.Map{
+		"message": "Usuario y reportes asociados eliminados exitosamente",
+	})
 }

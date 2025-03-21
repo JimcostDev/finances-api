@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"math"
 	"strconv"
 	"time"
 
@@ -12,24 +13,31 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
+// Helper function para redondear a 2 decimales
+func roundToTwoDecimals(value float64) float64 {
+	return math.Round(value*100) / 100
+}
+
 // recalcReportTotals recalcula los totales del reporte basándose en sus ingresos y gastos.
 func recalcReportTotals(report *models.Report) {
 	totalIngresoBruto := 0.0
 	for _, inc := range report.Ingresos {
 		totalIngresoBruto += inc.Monto
 	}
+
 	totalGastos := 0.0
 	for _, exp := range report.Gastos {
 		totalGastos += exp.Monto
 	}
 
-	report.TotalIngresoBruto = totalIngresoBruto
-	report.Diezmos = totalIngresoBruto * 0.1
-	report.Ofrendas = totalIngresoBruto * report.PorcentajeOfrenda
-	report.Iglesia = report.Diezmos + report.Ofrendas
-	report.IngresosNetos = totalIngresoBruto - report.Iglesia
-	report.TotalGastos = totalGastos
-	report.Liquidacion = report.IngresosNetos - totalGastos
+	// Aplicar redondeo a todos los campos numéricos
+	report.TotalIngresoBruto = roundToTwoDecimals(totalIngresoBruto)
+	report.Diezmos = roundToTwoDecimals(totalIngresoBruto * 0.1)
+	report.Ofrendas = roundToTwoDecimals(totalIngresoBruto * report.PorcentajeOfrenda)
+	report.Iglesia = roundToTwoDecimals(report.Diezmos + report.Ofrendas)
+	report.IngresosNetos = roundToTwoDecimals(totalIngresoBruto - report.Iglesia)
+	report.TotalGastos = roundToTwoDecimals(totalGastos)
+	report.Liquidacion = roundToTwoDecimals(report.IngresosNetos - report.TotalGastos)
 	report.UpdatedAt = time.Now()
 }
 
@@ -41,51 +49,59 @@ func CreateReport(c *fiber.Ctx) error {
 		Year              int              `json:"year"`
 		Ingresos          []models.Income  `json:"ingresos"`
 		Gastos            []models.Expense `json:"gastos"`
-		PorcentajeOfrenda float64          `json:"porcentaje_ofrenda"` // Ej: 0.04 para 4%
+		PorcentajeOfrenda float64          `json:"porcentaje_ofrenda"`
 	}
+
 	var req ReportRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).
 			JSON(fiber.Map{"error": "Error al parsear JSON"})
 	}
 
-	// Asignar un nuevo ObjectID a cada ingreso y gasto
+	// Redondear montos individuales y asignar un nuevo ObjectID a cada ingreso y gasto
 	for i := range req.Ingresos {
 		req.Ingresos[i].ID = primitive.NewObjectID()
+		req.Ingresos[i].Monto = roundToTwoDecimals(req.Ingresos[i].Monto)
 	}
 	for i := range req.Gastos {
 		req.Gastos[i].ID = primitive.NewObjectID()
+		req.Gastos[i].Monto = roundToTwoDecimals(req.Gastos[i].Monto)
 	}
 
-	// Calcular totales.
+	// Calcular totales con redondeo
 	totalIngresoBruto := 0.0
 	for _, inc := range req.Ingresos {
 		totalIngresoBruto += inc.Monto
 	}
+	totalIngresoBruto = roundToTwoDecimals(totalIngresoBruto)
+
 	totalGastos := 0.0
 	for _, exp := range req.Gastos {
 		totalGastos += exp.Monto
 	}
+	totalGastos = roundToTwoDecimals(totalGastos)
 
-	// Lógica de negocio.
-	diezmo := totalIngresoBruto * 0.1
-	ofrenda := totalIngresoBruto * req.PorcentajeOfrenda
-	iglesia := diezmo + ofrenda
-	ingresosNetos := totalIngresoBruto - iglesia
-	liquidacion := ingresosNetos - totalGastos
+	// Cálculos con redondeo en cada paso
+	diezmo := roundToTwoDecimals(totalIngresoBruto * 0.1)
+	ofrenda := roundToTwoDecimals(totalIngresoBruto * req.PorcentajeOfrenda)
+	iglesia := roundToTwoDecimals(diezmo + ofrenda)
+	ingresosNetos := roundToTwoDecimals(totalIngresoBruto - iglesia)
+	liquidacion := roundToTwoDecimals(ingresosNetos - totalGastos)
 
-	// Obtener el userID desde el contexto y convertirlo a ObjectID.
+	// Obtener y validar userID
 	userIDStr, ok := c.Locals("userID").(string)
 	if !ok || userIDStr == "" {
 		return c.Status(fiber.StatusUnauthorized).
 			JSON(fiber.Map{"error": "Usuario no autenticado"})
 	}
+
 	userObjID, err := primitive.ObjectIDFromHex(userIDStr)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).
+		return c.Status(fiber.StatusBadRequest).
 			JSON(fiber.Map{"error": "ID de usuario inválido"})
 	}
 
+	// Crear reporte con valores redondeados
 	report := models.Report{
 		UserID:            userObjID,
 		Month:             req.Month,
@@ -104,25 +120,20 @@ func CreateReport(c *fiber.Ctx) error {
 		UpdatedAt:         time.Now(),
 	}
 
+	// Insertar en la base de datos
 	collection := config.DB.Collection("reports")
 	result, err := collection.InsertOne(context.Background(), report)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).
-			JSON(fiber.Map{"error": "Error al insertar el reporte"})
+			JSON(fiber.Map{"error": "Error al crear el reporte: " + err.Error()})
 	}
 
-	// Asignar el ObjectID generado.
-	report.ID = result.InsertedID.(primitive.ObjectID)
-
-	// Devolver la respuesta convirtiendo los ObjectID a string (hex).
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-		"id":                  report.ID.Hex(),
+	// Preparar respuesta
+	response := fiber.Map{
+		"id":                  result.InsertedID.(primitive.ObjectID).Hex(),
 		"user_id":             report.UserID.Hex(),
 		"month":               report.Month,
 		"year":                report.Year,
-		"ingresos":            report.Ingresos,
-		"gastos":              report.Gastos,
-		"porcentaje_ofrenda":  report.PorcentajeOfrenda,
 		"total_ingreso_bruto": report.TotalIngresoBruto,
 		"diezmos":             report.Diezmos,
 		"ofrendas":            report.Ofrendas,
@@ -132,7 +143,9 @@ func CreateReport(c *fiber.Ctx) error {
 		"liquidacion":         report.Liquidacion,
 		"created_at":          report.CreatedAt,
 		"updated_at":          report.UpdatedAt,
-	})
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(response)
 }
 
 // UpdateReport actualiza un reporte existente y recalcula los campos según la lógica de negocio.
@@ -142,7 +155,7 @@ func UpdateReport(c *fiber.Ctx) error {
 	oid, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).
-			JSON(fiber.Map{"error": "ID inválido"})
+			JSON(fiber.Map{"error": "ID de reporte inválido"})
 	}
 
 	type ReportRequest struct {
@@ -150,54 +163,62 @@ func UpdateReport(c *fiber.Ctx) error {
 		Year              int              `json:"year"`
 		Ingresos          []models.Income  `json:"ingresos"`
 		Gastos            []models.Expense `json:"gastos"`
-		PorcentajeOfrenda float64          `json:"porcentaje_ofrenda"` // Ej: 0.04 para 4%
+		PorcentajeOfrenda float64          `json:"porcentaje_ofrenda"`
 	}
+
 	var req ReportRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).
-			JSON(fiber.Map{"error": "Error al parsear JSON"})
+			JSON(fiber.Map{"error": "Error al parsear JSON: " + err.Error()})
 	}
 
-	// Asignar un nuevo ObjectID a cada ingreso y gasto
+	// Asignar nuevos IDs solo a elementos sin ID y redondear montos
 	for i := range req.Ingresos {
-		req.Ingresos[i].ID = primitive.NewObjectID()
+		if req.Ingresos[i].ID.IsZero() {
+			req.Ingresos[i].ID = primitive.NewObjectID()
+		}
+		req.Ingresos[i].Monto = roundToTwoDecimals(req.Ingresos[i].Monto)
 	}
+
 	for i := range req.Gastos {
-		req.Gastos[i].ID = primitive.NewObjectID()
+		if req.Gastos[i].ID.IsZero() {
+			req.Gastos[i].ID = primitive.NewObjectID()
+		}
+		req.Gastos[i].Monto = roundToTwoDecimals(req.Gastos[i].Monto)
 	}
 
-	totalIngresoBruto := 0.0
-	for _, inc := range req.Ingresos {
-		totalIngresoBruto += inc.Monto
-	}
-	totalGastos := 0.0
-	for _, exp := range req.Gastos {
-		totalGastos += exp.Monto
-	}
-	diezmo := totalIngresoBruto * 0.1
-	ofrenda := totalIngresoBruto * req.PorcentajeOfrenda
-	iglesia := diezmo + ofrenda
-	ingresosNetos := totalIngresoBruto - iglesia
-	liquidacion := ingresosNetos - totalGastos
+	// Calcular totales con redondeo
+	totalIngresoBruto := roundToTwoDecimals(sumIngresos(req.Ingresos))
+	totalGastos := roundToTwoDecimals(sumGastos(req.Gastos))
 
+	// Cálculos con redondeo en cada paso
+	diezmo := roundToTwoDecimals(totalIngresoBruto * 0.1)
+	ofrenda := roundToTwoDecimals(totalIngresoBruto * req.PorcentajeOfrenda)
+	iglesia := roundToTwoDecimals(diezmo + ofrenda)
+	ingresosNetos := roundToTwoDecimals(totalIngresoBruto - iglesia)
+	liquidacion := roundToTwoDecimals(ingresosNetos - totalGastos)
+
+	// Validar usuario
 	userIDStr, ok := c.Locals("userID").(string)
 	if !ok || userIDStr == "" {
 		return c.Status(fiber.StatusUnauthorized).
 			JSON(fiber.Map{"error": "Usuario no autenticado"})
 	}
+
 	userObjID, err := primitive.ObjectIDFromHex(userIDStr)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).
+		return c.Status(fiber.StatusBadRequest).
 			JSON(fiber.Map{"error": "ID de usuario inválido"})
 	}
 
+	// Construir actualización
 	update := bson.M{
 		"$set": bson.M{
 			"month":               req.Month,
 			"year":                req.Year,
 			"ingresos":            req.Ingresos,
 			"gastos":              req.Gastos,
-			"porcentaje_ofrenda":  req.PorcentajeOfrenda,
+			"porcentaje_ofrenda":  roundToTwoDecimals(req.PorcentajeOfrenda),
 			"total_ingreso_bruto": totalIngresoBruto,
 			"diezmos":             diezmo,
 			"ofrendas":            ofrenda,
@@ -209,18 +230,49 @@ func UpdateReport(c *fiber.Ctx) error {
 		},
 	}
 
+	// Ejecutar actualización
 	collection := config.DB.Collection("reports")
-	// Filtrar por _id y user_id (como ObjectID)
-	_, err = collection.UpdateOne(context.Background(), bson.M{
-		"_id":     oid,
-		"user_id": userObjID,
-	}, update)
+	result, err := collection.UpdateOne(
+		context.Background(),
+		bson.M{"_id": oid, "user_id": userObjID},
+		update,
+	)
+
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).
-			JSON(fiber.Map{"error": "Error al actualizar el reporte"})
+			JSON(fiber.Map{"error": "Error al actualizar: " + err.Error()})
 	}
 
-	return c.JSON(fiber.Map{"message": "Reporte actualizado exitosamente"})
+	if result.MatchedCount == 0 {
+		return c.Status(fiber.StatusNotFound).
+			JSON(fiber.Map{"error": "Reporte no encontrado o no autorizado"})
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "Reporte actualizado exitosamente",
+		"data": fiber.Map{
+			"total_ingreso_bruto": totalIngresoBruto,
+			"liquidacion":         liquidacion,
+			"updated_at":          time.Now().Format(time.RFC3339),
+		},
+	})
+}
+
+// Funciones helper
+func sumIngresos(ingresos []models.Income) float64 {
+	total := 0.0
+	for _, inc := range ingresos {
+		total += inc.Monto
+	}
+	return total
+}
+
+func sumGastos(gastos []models.Expense) float64 {
+	total := 0.0
+	for _, exp := range gastos {
+		total += exp.Monto
+	}
+	return total
 }
 
 // GetReports obtiene todos los reportes del usuario autenticado.

@@ -10,10 +10,12 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-var DB *mongo.Database
+var (
+	Client *mongo.Client
+	DB     *mongo.Database
+)
 
 func ConnectDB() {
-	// Leer la variable de entorno MONGODB_URI
 	uri := os.Getenv("MONGO_URI")
 	if uri == "" {
 		log.Fatal("MONGO_URI no está definida")
@@ -22,19 +24,27 @@ func ConnectDB() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Usar mongo.Connect para conectarse a la base de datos
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
+	// Configurar opciones del cliente para transacciones
+	clientOpts := options.Client().ApplyURI(uri).SetRetryWrites(true)
+
+	var err error
+	Client, err = mongo.Connect(ctx, clientOpts)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Verifica la conexión
-	err = client.Ping(ctx, nil)
+	// Verificar conexión
+	err = Client.Ping(ctx, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Selecciona la base de datos que deseas utilizar
-	DB = client.Database("finances")
+	// Configurar la base de datos
+	DB = Client.Database("finances")
 	log.Println("Conectado a MongoDB!")
+}
+
+// GetClient devuelve la instancia del cliente MongoDB
+func GetClient() *mongo.Client {
+	return Client
 }
