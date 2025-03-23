@@ -14,7 +14,7 @@ func main() {
 
 	// Configura CORS para permitir solicitudes desde localhost:4321
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "http://localhost:4321, https://finances-ui.vercel.app",
+		AllowOrigins: "http://localhost:4321, https://finances-ui-app.vercel.app",
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
 	}))
 
