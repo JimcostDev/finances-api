@@ -14,7 +14,7 @@ func main() {
 
 	// Configura CORS para permitir solicitudes desde localhost:4321
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "https://finances.jimcostdev.com",
+		AllowOrigins: "https://finances.jimcostdev.com, http://localhost:4321",
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
 	}))
 
