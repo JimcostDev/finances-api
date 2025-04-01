@@ -11,6 +11,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // Helper function para redondear a 2 decimales
@@ -683,4 +684,97 @@ func RemoveExpense(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"message": "Gasto eliminado exitosamente", "report": report})
+}
+
+// GetAnnualReport obtiene el reporte anual para el usuario autenticado,
+// sumando los totales de todos los reportes de un año específico.
+func GetAnnualReport(c *fiber.Ctx) error {
+	// Extraer el año de los query params
+	yearStr := c.Query("year")
+	year, err := strconv.Atoi(yearStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "El año debe ser un número válido"})
+	}
+
+	// Obtener el userID desde el contexto
+	userIDStr, ok := c.Locals("userID").(string)
+	if !ok || userIDStr == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Usuario no autenticado"})
+	}
+	userObjID, err := primitive.ObjectIDFromHex(userIDStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "ID de usuario inválido"})
+	}
+
+	// Definir el pipeline de agregación
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.D{
+			{Key: "year", Value: year},
+			{Key: "user_id", Value: userObjID},
+		}}},
+		{{Key: "$group", Value: bson.D{
+			{Key: "_id", Value: nil},
+			{Key: "total_ingreso_bruto", Value: bson.D{{Key: "$sum", Value: "$total_ingreso_bruto"}}},
+			{Key: "total_ingreso_neto", Value: bson.D{{Key: "$sum", Value: "$ingresos_netos"}}},
+			{Key: "total_diezmos", Value: bson.D{{Key: "$sum", Value: "$diezmos"}}},
+			{Key: "total_ofrendas", Value: bson.D{{Key: "$sum", Value: "$ofrendas"}}},
+			{Key: "total_iglesia", Value: bson.D{{Key: "$sum", Value: "$iglesia"}}},
+			{Key: "total_gastos", Value: bson.D{{Key: "$sum", Value: "$total_gastos"}}},
+			{Key: "liquidacion_final", Value: bson.D{{Key: "$sum", Value: "$liquidacion"}}},
+			{Key: "user_id", Value: bson.D{{Key: "$first", Value: "$user_id"}}},
+			{Key: "year", Value: bson.D{{Key: "$first", Value: "$year"}}},
+		}}},
+		{{Key: "$project", Value: bson.D{
+			{Key: "_id", Value: 0},
+			{Key: "user_id", Value: 1},
+			{Key: "year", Value: 1},
+			{Key: "total_ingreso_bruto", Value: 1},
+			{Key: "total_ingreso_neto", Value: 1},
+			{Key: "total_diezmos", Value: 1},
+			{Key: "total_ofrendas", Value: 1},
+			{Key: "total_iglesia", Value: 1},
+			{Key: "total_gastos", Value: 1},
+			{Key: "liquidacion_final", Value: 1},
+		}}},
+	}
+
+	collection := config.DB.Collection("reports")
+	cursor, err := collection.Aggregate(context.Background(), pipeline)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Error al obtener el reporte anual"})
+	}
+	var results []bson.M
+	if err = cursor.All(context.Background(), &results); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Error al decodificar el reporte anual"})
+	}
+
+	if len(results) == 0 {
+		return c.JSON(fiber.Map{"message": "No se encontraron reportes para el año especificado"})
+	}
+
+	// Redondear cada valor a 2 decimales usando el helper
+	result := results[0]
+	if val, ok := result["total_ingreso_bruto"].(float64); ok {
+		result["total_ingreso_bruto"] = roundToTwoDecimals(val)
+	}
+	if val, ok := result["total_ingreso_neto"].(float64); ok {
+		result["total_ingreso_neto"] = roundToTwoDecimals(val)
+	}
+	if val, ok := result["total_diezmos"].(float64); ok {
+		result["total_diezmos"] = roundToTwoDecimals(val)
+	}
+	if val, ok := result["total_ofrendas"].(float64); ok {
+		result["total_ofrendas"] = roundToTwoDecimals(val)
+	}
+	if val, ok := result["total_iglesia"].(float64); ok {
+		result["total_iglesia"] = roundToTwoDecimals(val)
+	}
+	if val, ok := result["total_gastos"].(float64); ok {
+		result["total_gastos"] = roundToTwoDecimals(val)
+	}
+	if val, ok := result["liquidacion_final"].(float64); ok {
+		result["liquidacion_final"] = roundToTwoDecimals(val)
+	}
+
+	return c.JSON(results[0])
 }

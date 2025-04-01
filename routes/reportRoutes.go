@@ -12,6 +12,7 @@ func ReportRoutes(app *fiber.App) {
 	// Rutas básicas de Reporte
 	api.Get("/by-month", handlers.GetReportsByMonth)
 	api.Get("/", handlers.GetReports)
+	api.Get("/annual", handlers.GetAnnualReport)
 	api.Post("/", handlers.CreateReport)
 	api.Get("/:id", handlers.GetReportByID)
 	api.Put("/:id", handlers.UpdateReport)
