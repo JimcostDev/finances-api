@@ -1,38 +1,45 @@
 # syntax = docker/dockerfile:1.5
+
 ########################
 # Etapa de compilación
 ########################
 FROM golang:1.24-alpine AS builder
 
-RUN apk add --no-cache ca-certificates
+# Instala certificados para la compilación (necesario si alguno de tus imports hace HTTPS)
+RUN apk add --no-cache ca-certificates git
 
-# Necesario para compilar binario estático
+# Configuración para producir binarios estáticos
 ENV GOOS=linux \
     GOARCH=amd64 \
     CGO_ENABLED=0
 
 WORKDIR /build
 
-# Primero copia solo mod para acelerar la cache
+# Copia go.mod y go.sum primero para cachear dependencies
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Luego el resto del código
+# Copia el resto del código fuente
 COPY . .
 
-# Compila con nombre binario finances-api
+# Compila el binario
 RUN go build -o /app/finances-api
 
 ##############################
 # Etapa de producción mínima
 ##############################
-FROM scratch AS runner
+FROM alpine:3.20 AS runner
+
+# Instala solo certificados (no necesitas Go ni git aquí)
+RUN apk add --no-cache ca-certificates
+
 WORKDIR /app
 
-COPY --from=builder /app/finances-api ./
+# Copia el binario compilado
+COPY --from=builder /app/finances-api .
 
-# Expone el puerto que usa tu API, presumiblemente 3000
+# Expone el puerto de tu API (ajústalo si es distinto)
 EXPOSE 3000
 
+# Arranca tu aplicación
 CMD ["./finances-api"]
-
