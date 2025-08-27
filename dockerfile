@@ -3,7 +3,7 @@
 ########################
 # Etapa de compilación
 ########################
-FROM golang:1.24-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 # Instala certificados para la compilación (necesario si alguno de tus imports hace HTTPS)
 RUN apk add --no-cache ca-certificates git
