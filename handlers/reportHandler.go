@@ -295,8 +295,7 @@ func GetReports(c *fiber.Ctx) error {
 
 	// Opciones de búsqueda con ordenamiento
 	opts := options.Find().SetSort(bson.D{
-		{Key: "year", Value: -1},  // Año descendente
-		{Key: "month", Value: -1}, // Mes descendente
+		{Key: "created_at", Value: -1},  // descendente
 	})
 
 	cursor, err := collection.Find(context.Background(), filter, opts)
