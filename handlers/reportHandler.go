@@ -12,6 +12,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // Helper function para redondear a 2 decimales
@@ -289,17 +290,21 @@ func GetReports(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).
 			JSON(fiber.Map{"error": "ID de usuario inválido"})
 	}
-
 	collection := config.DB.Collection("reports")
 	filter := bson.M{"user_id": userObjID}
 
-	cursor, err := collection.Find(context.Background(), filter)
+	// Opciones de búsqueda con ordenamiento
+	opts := options.Find().SetSort(bson.D{
+		{Key: "year", Value: -1},  // Año descendente
+		{Key: "month", Value: -1}, // Mes descendente
+	})
+
+	cursor, err := collection.Find(context.Background(), filter, opts)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).
 			JSON(fiber.Map{"error": "Error al obtener los reportes"})
 	}
 	defer cursor.Close(context.Background())
-
 	var reports []models.Report
 	for cursor.Next(context.Background()) {
 		var report models.Report
@@ -313,7 +318,6 @@ func GetReports(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).
 			JSON(fiber.Map{"error": "Error en el cursor de reportes"})
 	}
-
 	// Convertir ObjectID a string para la respuesta
 	var reportsResp []fiber.Map
 	for _, report := range reports {
@@ -336,7 +340,6 @@ func GetReports(c *fiber.Ctx) error {
 			"updated_at":          report.UpdatedAt,
 		})
 	}
-
 	return c.JSON(reportsResp)
 }
 
