@@ -6,9 +6,10 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func UserRoutes(app *fiber.App) {
-	api := app.Group("/api/users/", middleware.Protected())
-	api.Get("/profile", handlers.GetUserProfile)
-	api.Patch("/profile", handlers.UpdateUser)
-	api.Delete("/profile", handlers.DeleteUser)
+func UserRoutes(app *fiber.App, handler *handlers.UserHandler) {
+	api := app.Group("/api/users", middleware.Protected())
+
+	api.Get("/profile", handler.GetUserProfile)
+	api.Put("/profile", handler.UpdateUser)
+	api.Delete("/profile", handler.DeleteUser)
 }

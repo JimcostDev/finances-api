@@ -6,21 +6,22 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func ReportRoutes(app *fiber.App) {
+// Modificamos la función para recibir el 'handler' como parámetro
+func ReportRoutes(app *fiber.App, handler *handlers.ReportHandler) {
 	api := app.Group("/api/reports", middleware.Protected())
 
-	// Rutas básicas de Reporte
-	api.Get("/by-month", handlers.GetReportsByMonth)
-	api.Get("/", handlers.GetReports)
-	api.Get("/annual", handlers.GetAnnualReport)
-	api.Post("/", handlers.CreateReport)
-	api.Get("/:id", handlers.GetReportByID)
-	api.Put("/:id", handlers.UpdateReport)
-	api.Delete("/:id", handlers.DeleteReport)
+	// Rutas básicas de Reporte usando los MÉTODOS del handler
+	api.Get("/by-month", handler.GetReportsByMonth)
+	api.Get("/", handler.GetReports)
+	api.Get("/annual", handler.GetAnnualReport)
+	api.Post("/", handler.CreateReport)
+	api.Get("/:id", handler.GetReportByID)
+	api.Put("/:id", handler.UpdateReport)
+	api.Delete("/:id", handler.DeleteReport)
 
-	// Endpoints para modificar ingresos y gastos dentro del reporte
-	api.Post("/:id/income", handlers.AddIncome)
-	api.Delete("/:id/income/:income_id", handlers.RemoveIncome)
-	api.Post("/:id/expense", handlers.AddExpense)
-	api.Delete("/:id/expense/:expense_id", handlers.RemoveExpense)
+	// Endpoints para modificar ingresos y gastos
+	api.Post("/:id/income", handler.AddIncome)
+	api.Delete("/:id/income/:income_id", handler.RemoveIncome)
+	api.Post("/:id/expense", handler.AddExpense)
+	api.Delete("/:id/expense/:expense_id", handler.RemoveExpense)
 }
