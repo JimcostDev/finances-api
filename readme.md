@@ -27,21 +27,3 @@ El código sigue un flujo de datos unidireccional:
 | **`routes/`** | **Wiring (Cableado):** Configura las rutas e inyecta las dependencias (`Repo` -> `Service` -> `Handler`). |
 | **`middleware/`** | Interceptores para proteger rutas, validando el token JWT. |
 | **`main.go`** | Punto de entrada. Inicia la DB y levanta el servidor Fiber. |
-
-## 🛠️ Instalación y Uso
-
-1.  **Clonar el repositorio:**
-    ```bash
-    git clone [https://github.com/JimcostDev/finances-api.git](https://github.com/JimcostDev/finances-api.git)
-    cd finances-api
-    ```
-
-2.  **Configurar variables de entorno:**
-    Asegúrate de tener un archivo `.env` o las variables configuradas (MONGO_URI, JWT_SECRET_KEY, etc.).
-
-3.  **Instalar dependencias:**
-    ```bash
-    go mod tidy
-    ```
-
-Hecho con ❤️ y Go.
