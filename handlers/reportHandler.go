@@ -244,3 +244,21 @@ func (h *ReportHandler) GetAnnualReport(c *fiber.Ctx) error {
 	}
 	return c.JSON(result)
 }
+
+// GetGeneralBalance obtiene el balance histórico de todos los tiempos
+func (h *ReportHandler) GetGeneralBalance(c *fiber.Ctx) error {
+	userID := c.Locals("userID").(string)
+	result, err := h.service.GetGeneralBalance(c.Context(), userID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	if result == nil {
+		return c.JSON(fiber.Map{
+			"total_ingreso_bruto": 0,
+			"liquidacion_final":   0,
+		})
+	}
+
+	return c.JSON(result)
+}

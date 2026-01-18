@@ -18,7 +18,7 @@ type ReportRepository interface {
 	FindOne(ctx context.Context, oid primitive.ObjectID, userID primitive.ObjectID) (*models.Report, error)
 	FindByMonth(ctx context.Context, userID primitive.ObjectID, month string, year int) ([]models.Report, error)
 	Delete(ctx context.Context, oid primitive.ObjectID, userID primitive.ObjectID) (*mongo.DeleteResult, error)
-	AggregateAnnual(ctx context.Context, pipeline mongo.Pipeline) ([]bson.M, error)
+	AggregateReports(ctx context.Context, pipeline mongo.Pipeline) ([]bson.M, error)
 	DeleteAllByUserID(ctx context.Context, userID primitive.ObjectID) (*mongo.DeleteResult, error)
 }
 
@@ -94,7 +94,7 @@ func (r *reportRepository) Delete(ctx context.Context, oid primitive.ObjectID, u
 	return r.collection.DeleteOne(ctx, filter)
 }
 
-func (r *reportRepository) AggregateAnnual(ctx context.Context, pipeline mongo.Pipeline) ([]bson.M, error) {
+func (r *reportRepository) AggregateReports(ctx context.Context, pipeline mongo.Pipeline) ([]bson.M, error) {
 	cursor, err := r.collection.Aggregate(ctx, pipeline)
 	if err != nil {
 		return nil, err

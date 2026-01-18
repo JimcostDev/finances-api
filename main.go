@@ -12,16 +12,16 @@ import (
 func main() {
 	app := fiber.New()
 
-	// Configura CORS para permitir solicitudes desde localhost:4321 y el dominio de producción
+	// Configurar CORS
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: "https://finances.jimcostdev.com, http://localhost:4321",
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
 	}))
 
-	// Conectar a MongoDB. (Paso crucial antes de cargar las rutas)
+	// Conectar a MongoDB.
 	config.ConnectDB()
 
-	// Configurar las rutas. (Esto inicia la inyección de dependencias)
+	// Configurar las rutas
 	routes.SetupRoutes(app)
 
 	// Hola Mundo / Health Check

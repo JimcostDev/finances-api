@@ -20,7 +20,10 @@ type ReportService interface {
 	GetReportByID(ctx context.Context, reportID string, userID string) (*models.Report, error)
 	GetReportsByMonth(ctx context.Context, userID string, month string, year int) ([]models.Report, error)
 	DeleteReport(ctx context.Context, reportID string, userID string) error
+
+	// --- Métodos de Análisis Financiero ---
 	GetAnnualReport(ctx context.Context, userID string, year int) (bson.M, error)
+	GetGeneralBalance(ctx context.Context, userID string) (bson.M, error)
 
 	// Métodos para items individuales
 	AddIncome(ctx context.Context, reportID, userID string, income models.Income) (*models.Report, error)
@@ -346,20 +349,50 @@ func (s *reportService) RemoveExpense(ctx context.Context, reportID, userIDStr, 
 	return report, err
 }
 
+// GetAnnualReport: Filtra por Usuario + Año
 func (s *reportService) GetAnnualReport(ctx context.Context, userIDStr string, year int) (bson.M, error) {
 	userObjID, err := primitive.ObjectIDFromHex(userIDStr)
 	if err != nil {
 		return nil, errors.New("invalid user ID")
 	}
 
-	// Copiamos el pipeline original
-	pipeline := mongo.Pipeline{
-		{{Key: "$match", Value: bson.D{
+	// filtro específico: Año y Usuario
+	matchStage := bson.D{
+		{Key: "$match", Value: bson.D{
 			{Key: "year", Value: year},
 			{Key: "user_id", Value: userObjID},
-		}}},
+		}},
+	}
+
+	pipeline := append(mongo.Pipeline{matchStage}, s.getFinancialAnalysisPipeline()...)
+
+	return s.executeAggregation(ctx, pipeline)
+}
+
+// GetGeneralBalance: Filtra solo por Usuario (Histórico completo)
+func (s *reportService) GetGeneralBalance(ctx context.Context, userIDStr string) (bson.M, error) {
+	userObjID, err := primitive.ObjectIDFromHex(userIDStr)
+	if err != nil {
+		return nil, errors.New("invalid user ID")
+	}
+
+	// filtro específico: Solo Usuario (Toda la historia)
+	matchStage := bson.D{
+		{Key: "$match", Value: bson.D{
+			{Key: "user_id", Value: userObjID},
+		}},
+	}
+
+	pipeline := append(mongo.Pipeline{matchStage}, s.getFinancialAnalysisPipeline()...)
+
+	return s.executeAggregation(ctx, pipeline)
+}
+
+// Devuelve los pasos comunes ($group y $project) que comparten tanto el reporte anual como el general.
+func (s *reportService) getFinancialAnalysisPipeline() mongo.Pipeline {
+	return mongo.Pipeline{
 		{{Key: "$group", Value: bson.D{
-			{Key: "_id", Value: nil},
+			{Key: "_id", Value: nil}, // Agrupamos todo lo que pasó el filtro
 			{Key: "total_ingreso_bruto", Value: bson.D{{Key: "$sum", Value: "$total_ingreso_bruto"}}},
 			{Key: "total_ingreso_neto", Value: bson.D{{Key: "$sum", Value: "$ingresos_netos"}}},
 			{Key: "total_diezmos", Value: bson.D{{Key: "$sum", Value: "$diezmos"}}},
@@ -367,13 +400,9 @@ func (s *reportService) GetAnnualReport(ctx context.Context, userIDStr string, y
 			{Key: "total_iglesia", Value: bson.D{{Key: "$sum", Value: "$iglesia"}}},
 			{Key: "total_gastos", Value: bson.D{{Key: "$sum", Value: "$total_gastos"}}},
 			{Key: "liquidacion_final", Value: bson.D{{Key: "$sum", Value: "$liquidacion"}}},
-			{Key: "user_id", Value: bson.D{{Key: "$first", Value: "$user_id"}}},
-			{Key: "year", Value: bson.D{{Key: "$first", Value: "$year"}}},
 		}}},
 		{{Key: "$project", Value: bson.D{
 			{Key: "_id", Value: 0},
-			{Key: "user_id", Value: 1},
-			{Key: "year", Value: 1},
 			{Key: "total_ingreso_bruto", Value: 1},
 			{Key: "total_ingreso_neto", Value: 1},
 			{Key: "total_diezmos", Value: 1},
@@ -383,22 +412,45 @@ func (s *reportService) GetAnnualReport(ctx context.Context, userIDStr string, y
 			{Key: "liquidacion_final", Value: 1},
 		}}},
 	}
+}
 
-	results, err := s.repo.AggregateAnnual(ctx, pipeline)
+// executeAggregation ejecuta el pipeline en el repositorio y formatea/redondea el resultado
+func (s *reportService) executeAggregation(ctx context.Context, pipeline mongo.Pipeline) (bson.M, error) {
+	// Llamamos al repositorio
+	results, err := s.repo.AggregateReports(ctx, pipeline)
 	if err != nil {
 		return nil, err
 	}
+
+	// Si no hay datos (ej: usuario nuevo sin reportes) devolvemos todo en 0
 	if len(results) == 0 {
-		return nil, nil
+		return bson.M{
+			"total_ingreso_bruto": 0.0,
+			"total_ingreso_neto":  0.0,
+			"total_diezmos":       0.0,
+			"total_ofrendas":      0.0,
+			"total_iglesia":       0.0,
+			"total_gastos":        0.0,
+			"liquidacion_final":   0.0,
+		}, nil
 	}
 
 	result := results[0]
+
 	// Aplicar redondeo a los resultados
 	fields := []string{"total_ingreso_bruto", "total_ingreso_neto", "total_diezmos", "total_ofrendas", "total_iglesia", "total_gastos", "liquidacion_final"}
 	for _, f := range fields {
 		if val, ok := result[f].(float64); ok {
-			result[f] = roundToTwoDecimals(val)
+			result[f] = s.roundToTwoDecimals(val)
+		} else {
+			// Asegurar que si viene nulo o entero, se ponga como 0.0
+			result[f] = 0.0
 		}
 	}
 	return result, nil
+}
+
+// roundToTwoDecimals helper (si no lo tienes en utils, déjalo aquí)
+func (s *reportService) roundToTwoDecimals(val float64) float64 {
+	return math.Round(val*100) / 100
 }
