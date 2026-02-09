@@ -3,7 +3,7 @@ module github.com/JimcostDev/finances-api
 go 1.25.0
 
 require (
-	github.com/gofiber/fiber/v2 v2.52.9
+	github.com/gofiber/fiber/v2 v2.52.11
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	go.mongodb.org/mongo-driver v1.17.3
 	golang.org/x/crypto v0.45.0
