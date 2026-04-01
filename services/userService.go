@@ -13,6 +13,11 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// ReportChurchRecalculator recalcula reportes cuando el usuario cambia enable_church_contributions.
+type ReportChurchRecalculator interface {
+	RecalculateAllReportsForUser(ctx context.Context, userIDStr string, churchEnabled bool) error
+}
+
 type UserService interface {
 	GetUserProfile(ctx context.Context, userIDStr string) (*models.User, error)
 	UpdateUser(ctx context.Context, userIDStr string, req UpdateUserRequest) error
@@ -32,13 +37,15 @@ type userService struct {
 	userRepo   repositories.UserRepository
 	reportRepo repositories.ReportRepository
 	client     *mongo.Client // Necesario para transacciones
+	recalc     ReportChurchRecalculator
 }
 
-func NewUserService(uRepo repositories.UserRepository, rRepo repositories.ReportRepository, client *mongo.Client) UserService {
+func NewUserService(uRepo repositories.UserRepository, rRepo repositories.ReportRepository, client *mongo.Client, recalc ReportChurchRecalculator) UserService {
 	return &userService{
 		userRepo:   uRepo,
 		reportRepo: rRepo,
 		client:     client,
+		recalc:     recalc,
 	}
 }
 
@@ -64,6 +71,16 @@ func (s *userService) UpdateUser(ctx context.Context, userIDStr string, req Upda
 
 	if req.Password != "" && req.Password != req.ConfirmPassword {
 		return errors.New("las contraseñas no coinciden")
+	}
+
+	var previousChurch *bool
+	if req.EnableChurchContributions != nil {
+		existing, err := s.userRepo.FindByID(ctx, oid)
+		if err != nil {
+			return errors.New("usuario no encontrado")
+		}
+		v := existing.EnableChurchContributions
+		previousChurch = &v
 	}
 
 	updateData := bson.M{"updated_at": time.Now()}
@@ -103,7 +120,17 @@ func (s *userService) UpdateUser(ctx context.Context, userIDStr string, req Upda
 	}
 
 	_, err = s.userRepo.Update(ctx, oid, bson.M{"$set": updateData})
-	return err
+	if err != nil {
+		return err
+	}
+
+	if req.EnableChurchContributions != nil && previousChurch != nil &&
+		*req.EnableChurchContributions != *previousChurch && s.recalc != nil {
+		if err := s.recalc.RecalculateAllReportsForUser(ctx, userIDStr, *req.EnableChurchContributions); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *userService) DeleteUser(ctx context.Context, userIDStr string) error {

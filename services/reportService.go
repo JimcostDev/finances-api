@@ -30,6 +30,9 @@ type ReportService interface {
 	AddExpense(ctx context.Context, reportID, userID string, expense models.Expense) (*models.Report, error)
 	RemoveIncome(ctx context.Context, reportID, userID, incomeID string) (*models.Report, error)
 	RemoveExpense(ctx context.Context, reportID, userID, expenseID string) (*models.Report, error)
+
+	// RecalculateAllReportsForUser reaplica la lógica de iglesia a todos los reportes (p. ej. al activar diezmos/ofrendas en el perfil).
+	RecalculateAllReportsForUser(ctx context.Context, userIDStr string, churchEnabled bool) error
 }
 
 // Estructura auxiliar para recibir datos (la moví del handler aquí)
@@ -82,7 +85,8 @@ func recalcReportTotalsWithChurch(report *models.Report, churchEnabled bool) {
 	report.TotalGastos = roundToTwoDecimals(totalGastos)
 
 	if !churchEnabled {
-		report.PorcentajeOfrenda = 0
+		// No poner porcentaje_ofrenda a 0: conservamos el % en BD para si el usuario
+		// vuelve a activar diezmos/ofrendas (el cliente suele enviar 0 con la opción apagada).
 		report.Diezmos = 0
 		report.Ofrendas = 0
 		report.Iglesia = 0
@@ -198,6 +202,14 @@ func (s *reportService) UpdateReport(ctx context.Context, reportID string, userI
 			req.Gastos[i].ID = primitive.NewObjectID()
 		}
 		req.Gastos[i].Monto = roundToTwoDecimals(req.Gastos[i].Monto)
+	}
+
+	if !churchEnabled {
+		existingRep, ferr := s.repo.FindOne(ctx, oid, userObjID)
+		if ferr != nil {
+			return nil, errors.New("not found")
+		}
+		req.PorcentajeOfrenda = existingRep.PorcentajeOfrenda
 	}
 
 	tempReport := models.Report{
@@ -498,6 +510,36 @@ func (s *reportService) executeAggregation(ctx context.Context, pipeline mongo.P
 		}
 	}
 	return result, nil
+}
+
+func (s *reportService) RecalculateAllReportsForUser(ctx context.Context, userIDStr string, churchEnabled bool) error {
+	oid, err := primitive.ObjectIDFromHex(userIDStr)
+	if err != nil {
+		return errors.New("invalid user ID")
+	}
+	reports, err := s.repo.FindAll(ctx, oid)
+	if err != nil {
+		return err
+	}
+	for i := range reports {
+		rep := &reports[i]
+		recalcReportTotalsWithChurch(rep, churchEnabled)
+		_, err := s.repo.Update(ctx, rep.ID, oid, bson.M{"$set": bson.M{
+			"porcentaje_ofrenda":  roundToTwoDecimals(rep.PorcentajeOfrenda),
+			"total_ingreso_bruto": rep.TotalIngresoBruto,
+			"diezmos":             rep.Diezmos,
+			"ofrendas":            rep.Ofrendas,
+			"iglesia":             rep.Iglesia,
+			"ingresos_netos":      rep.IngresosNetos,
+			"total_gastos":        rep.TotalGastos,
+			"liquidacion":         rep.Liquidacion,
+			"updated_at":          rep.UpdatedAt,
+		}})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // roundToTwoDecimals helper (si no lo tienes en utils, déjalo aquí)
