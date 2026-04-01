@@ -9,6 +9,9 @@ go.work.sum
 # Dependency directories
 /vendor/
 
+# Local tmp (binarios / logs de Air u otros)
+/tmp/
+
 # Golang build output
 *.exe
 *.exe~

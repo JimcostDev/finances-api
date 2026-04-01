@@ -42,11 +42,24 @@ type ReportRequest struct {
 }
 
 type reportService struct {
-	repo repositories.ReportRepository
+	repo     repositories.ReportRepository
+	userRepo repositories.UserRepository
 }
 
-func NewReportService(repo repositories.ReportRepository) ReportService {
-	return &reportService{repo: repo}
+func NewReportService(repo repositories.ReportRepository, userRepo repositories.UserRepository) ReportService {
+	return &reportService{repo: repo, userRepo: userRepo}
+}
+
+func (s *reportService) churchContributionsEnabled(ctx context.Context, userIDStr string) (bool, error) {
+	oid, err := primitive.ObjectIDFromHex(userIDStr)
+	if err != nil {
+		return false, errors.New("invalid user ID")
+	}
+	u, err := s.userRepo.FindByID(ctx, oid)
+	if err != nil {
+		return false, errors.New("usuario no encontrado")
+	}
+	return u.EnableChurchContributions, nil
 }
 
 // --- Helpers de Lógica de Negocio ---
@@ -54,7 +67,7 @@ func roundToTwoDecimals(value float64) float64 {
 	return math.Round(value*100) / 100
 }
 
-func recalcReportTotals(report *models.Report) {
+func recalcReportTotalsWithChurch(report *models.Report, churchEnabled bool) {
 	totalIngresoBruto := 0.0
 	for _, inc := range report.Ingresos {
 		totalIngresoBruto += inc.Monto
@@ -66,11 +79,21 @@ func recalcReportTotals(report *models.Report) {
 	}
 
 	report.TotalIngresoBruto = roundToTwoDecimals(totalIngresoBruto)
-	report.Diezmos = roundToTwoDecimals(totalIngresoBruto * 0.1)
-	report.Ofrendas = roundToTwoDecimals(totalIngresoBruto * report.PorcentajeOfrenda)
-	report.Iglesia = roundToTwoDecimals(report.Diezmos + report.Ofrendas)
-	report.IngresosNetos = roundToTwoDecimals(totalIngresoBruto - report.Iglesia)
 	report.TotalGastos = roundToTwoDecimals(totalGastos)
+
+	if !churchEnabled {
+		report.PorcentajeOfrenda = 0
+		report.Diezmos = 0
+		report.Ofrendas = 0
+		report.Iglesia = 0
+		report.IngresosNetos = report.TotalIngresoBruto
+	} else {
+		report.Diezmos = roundToTwoDecimals(totalIngresoBruto * 0.1)
+		report.Ofrendas = roundToTwoDecimals(totalIngresoBruto * report.PorcentajeOfrenda)
+		report.Iglesia = roundToTwoDecimals(report.Diezmos + report.Ofrendas)
+		report.IngresosNetos = roundToTwoDecimals(totalIngresoBruto - report.Iglesia)
+	}
+
 	report.Liquidacion = roundToTwoDecimals(report.IngresosNetos - report.TotalGastos)
 	report.UpdatedAt = time.Now()
 }
@@ -99,6 +122,11 @@ func (s *reportService) CreateReport(ctx context.Context, userIDStr string, req 
 		return nil, errors.New("invalid user ID")
 	}
 
+	churchEnabled, err := s.churchContributionsEnabled(ctx, userIDStr)
+	if err != nil {
+		return nil, err
+	}
+
 	// Lógica de IDs y Redondeo
 	for i := range req.Ingresos {
 		req.Ingresos[i].ID = primitive.NewObjectID()
@@ -109,13 +137,12 @@ func (s *reportService) CreateReport(ctx context.Context, userIDStr string, req 
 		req.Gastos[i].Monto = roundToTwoDecimals(req.Gastos[i].Monto)
 	}
 
-	// Crear struct temporal para usar recalcReportTotals
 	tempReport := models.Report{
 		Ingresos:          req.Ingresos,
 		Gastos:            req.Gastos,
 		PorcentajeOfrenda: req.PorcentajeOfrenda,
 	}
-	recalcReportTotals(&tempReport)
+	recalcReportTotalsWithChurch(&tempReport, churchEnabled)
 
 	finalReport := models.Report{
 		UserID:            userObjID,
@@ -123,7 +150,7 @@ func (s *reportService) CreateReport(ctx context.Context, userIDStr string, req 
 		Year:              req.Year,
 		Ingresos:          req.Ingresos,
 		Gastos:            req.Gastos,
-		PorcentajeOfrenda: req.PorcentajeOfrenda,
+		PorcentajeOfrenda: tempReport.PorcentajeOfrenda,
 		TotalIngresoBruto: tempReport.TotalIngresoBruto,
 		Diezmos:           tempReport.Diezmos,
 		Ofrendas:          tempReport.Ofrendas,
@@ -154,6 +181,11 @@ func (s *reportService) UpdateReport(ctx context.Context, reportID string, userI
 		return nil, errors.New("invalid user ID")
 	}
 
+	churchEnabled, err := s.churchContributionsEnabled(ctx, userIDStr)
+	if err != nil {
+		return nil, err
+	}
+
 	// Lógica de redondeo y asignación de IDs si faltan
 	for i := range req.Ingresos {
 		if req.Ingresos[i].ID.IsZero() {
@@ -168,13 +200,12 @@ func (s *reportService) UpdateReport(ctx context.Context, reportID string, userI
 		req.Gastos[i].Monto = roundToTwoDecimals(req.Gastos[i].Monto)
 	}
 
-	// Usamos la lógica de cálculo
 	tempReport := models.Report{
 		Ingresos:          req.Ingresos,
 		Gastos:            req.Gastos,
 		PorcentajeOfrenda: req.PorcentajeOfrenda,
 	}
-	recalcReportTotals(&tempReport)
+	recalcReportTotalsWithChurch(&tempReport, churchEnabled)
 
 	update := bson.M{
 		"$set": bson.M{
@@ -182,7 +213,7 @@ func (s *reportService) UpdateReport(ctx context.Context, reportID string, userI
 			"year":                req.Year,
 			"ingresos":            req.Ingresos,
 			"gastos":              req.Gastos,
-			"porcentaje_ofrenda":  roundToTwoDecimals(req.PorcentajeOfrenda),
+			"porcentaje_ofrenda":  roundToTwoDecimals(tempReport.PorcentajeOfrenda),
 			"total_ingreso_bruto": tempReport.TotalIngresoBruto,
 			"diezmos":             tempReport.Diezmos,
 			"ofrendas":            tempReport.Ofrendas,
@@ -263,16 +294,20 @@ func (s *reportService) AddIncome(ctx context.Context, reportID, userIDStr strin
 		newIncome.ID = primitive.NewObjectID()
 	}
 
-	// Reutilizamos GetReportByID
+	churchEnabled, err := s.churchContributionsEnabled(ctx, userIDStr)
+	if err != nil {
+		return nil, err
+	}
+
 	report, err := s.GetReportByID(ctx, reportID, userIDStr)
 	if err != nil {
 		return nil, err
 	}
 
 	report.Ingresos = append(report.Ingresos, newIncome)
-	recalcReportTotals(report)
+	recalcReportTotalsWithChurch(report, churchEnabled)
 
-	userObjID, _ := primitive.ObjectIDFromHex(userIDStr) // Ya validado arriba
+	userObjID, _ := primitive.ObjectIDFromHex(userIDStr)
 	_, err = s.repo.Update(ctx, report.ID, userObjID, bson.M{"$set": report})
 	return report, err
 }
@@ -282,13 +317,18 @@ func (s *reportService) AddExpense(ctx context.Context, reportID, userIDStr stri
 		newExpense.ID = primitive.NewObjectID()
 	}
 
+	churchEnabled, err := s.churchContributionsEnabled(ctx, userIDStr)
+	if err != nil {
+		return nil, err
+	}
+
 	report, err := s.GetReportByID(ctx, reportID, userIDStr)
 	if err != nil {
 		return nil, err
 	}
 
 	report.Gastos = append(report.Gastos, newExpense)
-	recalcReportTotals(report)
+	recalcReportTotalsWithChurch(report, churchEnabled)
 
 	userObjID, _ := primitive.ObjectIDFromHex(userIDStr)
 	_, err = s.repo.Update(ctx, report.ID, userObjID, bson.M{"$set": report})
@@ -296,6 +336,11 @@ func (s *reportService) AddExpense(ctx context.Context, reportID, userIDStr stri
 }
 
 func (s *reportService) RemoveIncome(ctx context.Context, reportID, userIDStr, incomeID string) (*models.Report, error) {
+	churchEnabled, err := s.churchContributionsEnabled(ctx, userIDStr)
+	if err != nil {
+		return nil, err
+	}
+
 	report, err := s.GetReportByID(ctx, reportID, userIDStr)
 	if err != nil {
 		return nil, err
@@ -315,7 +360,7 @@ func (s *reportService) RemoveIncome(ctx context.Context, reportID, userIDStr, i
 	}
 
 	report.Ingresos = updatedIncomes
-	recalcReportTotals(report)
+	recalcReportTotalsWithChurch(report, churchEnabled)
 
 	userObjID, _ := primitive.ObjectIDFromHex(userIDStr)
 	_, err = s.repo.Update(ctx, report.ID, userObjID, bson.M{"$set": report})
@@ -323,6 +368,11 @@ func (s *reportService) RemoveIncome(ctx context.Context, reportID, userIDStr, i
 }
 
 func (s *reportService) RemoveExpense(ctx context.Context, reportID, userIDStr, expenseID string) (*models.Report, error) {
+	churchEnabled, err := s.churchContributionsEnabled(ctx, userIDStr)
+	if err != nil {
+		return nil, err
+	}
+
 	report, err := s.GetReportByID(ctx, reportID, userIDStr)
 	if err != nil {
 		return nil, err
@@ -342,7 +392,7 @@ func (s *reportService) RemoveExpense(ctx context.Context, reportID, userIDStr, 
 	}
 
 	report.Gastos = updatedExpenses
-	recalcReportTotals(report)
+	recalcReportTotalsWithChurch(report, churchEnabled)
 
 	userObjID, _ := primitive.ObjectIDFromHex(userIDStr)
 	_, err = s.repo.Update(ctx, report.ID, userObjID, bson.M{"$set": report})

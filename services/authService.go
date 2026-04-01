@@ -62,12 +62,13 @@ func (s *authService) RegisterUser(ctx context.Context, req RegisterRequest) (*m
 
 	// 4. Crear modelo
 	user := models.User{
-		Email:     req.Email,
-		Username:  req.Username,
-		Fullname:  req.Fullname,
-		Password:  string(hashedPassword),
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Email:                     req.Email,
+		Username:                  req.Username,
+		Fullname:                  req.Fullname,
+		Password:                  string(hashedPassword),
+		EnableChurchContributions: false,
+		CreatedAt:                 time.Now(),
+		UpdatedAt:                 time.Now(),
 	}
 
 	// 5. Guardar en DB

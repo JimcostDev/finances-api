@@ -20,11 +20,12 @@ type UserService interface {
 }
 
 type UpdateUserRequest struct {
-	Email           string `json:"email,omitempty"`
-	Username        string `json:"username,omitempty"`
-	Fullname        string `json:"fullname,omitempty"`
-	Password        string `json:"password,omitempty"`
-	ConfirmPassword string `json:"confirm_password,omitempty"`
+	Email                     string `json:"email,omitempty"`
+	Username                  string `json:"username,omitempty"`
+	Fullname                  string `json:"fullname,omitempty"`
+	Password                  string `json:"password,omitempty"`
+	ConfirmPassword           string `json:"confirm_password,omitempty"`
+	EnableChurchContributions *bool  `json:"enable_church_contributions,omitempty"`
 }
 
 type userService struct {
@@ -95,6 +96,10 @@ func (s *userService) UpdateUser(ctx context.Context, userIDStr string, req Upda
 			return errors.New("error al encriptar contraseña")
 		}
 		updateData["password"] = string(hashed)
+	}
+
+	if req.EnableChurchContributions != nil {
+		updateData["enable_church_contributions"] = *req.EnableChurchContributions
 	}
 
 	_, err = s.userRepo.Update(ctx, oid, bson.M{"$set": updateData})
