@@ -8,13 +8,15 @@ import (
 
 type Income struct {
 	ID       primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
-	Concepto string             `bson:"concepto" json:"concepto"`
+	CategoriaID *primitive.ObjectID `bson:"categoria_id,omitempty" json:"categoria_id,omitempty"`
+	Concepto    string             `bson:"concepto,omitempty" json:"concepto,omitempty"`
 	Monto    float64            `bson:"monto" json:"monto"`
 }
 
 type Expense struct {
 	ID       primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
-	Concepto string             `bson:"concepto" json:"concepto"`
+	CategoriaID *primitive.ObjectID `bson:"categoria_id,omitempty" json:"categoria_id,omitempty"`
+	Concepto    string             `bson:"concepto,omitempty" json:"concepto,omitempty"`
 	Monto    float64            `bson:"monto" json:"monto"`
 }
 

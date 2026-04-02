@@ -18,11 +18,15 @@ func SetupRoutes(app *fiber.App) {
 	reportRepo := repositories.NewReportRepository(config.DB)
 	reportService := services.NewReportService(reportRepo, userRepo)
 	reportHandler := handlers.NewReportHandler(reportService)
+	categoryRepo := repositories.NewCategoryRepository(config.DB)
+	categoryService := services.NewCategoryService(categoryRepo)
+	categoryHandler := handlers.NewCategoryHandler(categoryService)
 
 	userService := services.NewUserService(userRepo, reportRepo, dbClient, reportService)
 	userHandler := handlers.NewUserHandler(userService)
 
 	AuthRoutes(app, authHandler)
 	ReportRoutes(app, reportHandler)
+	CategoryRoutes(app, categoryHandler)
 	UserRoutes(app, userHandler)
 }
