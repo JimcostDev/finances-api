@@ -12,7 +12,10 @@ import (
 )
 
 func main() {
-	app := fiber.New()
+	// Tras proxy (p. ej. Koyeb), c.Protocol() y cookies Secure usan X-Forwarded-Proto
+	app := fiber.New(fiber.Config{
+		ProxyHeader: "X-Forwarded-Proto",
+	})
 
 	// CORS: credenciales necesarias para cookies cross-origin (añade orígenes en CORS_ORIGINS separados por coma)
 	allowOrigins := os.Getenv("CORS_ORIGINS")

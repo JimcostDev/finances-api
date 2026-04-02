@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"os"
+	"strings"
 
 	"github.com/JimcostDev/finances-api/middleware"
 	"github.com/JimcostDev/finances-api/services"
@@ -15,6 +16,26 @@ type AuthHandler struct {
 
 func NewAuthHandler(s services.AuthService, us services.UserService) *AuthHandler {
 	return &AuthHandler{service: s, users: us}
+}
+
+// cookieSecure: HTTPS directo, proxy (Koyeb, etc.) o COOKIE_SECURE=true.
+func cookieSecure(c *fiber.Ctx) bool {
+	if c.Protocol() == "https" {
+		return true
+	}
+	if strings.EqualFold(c.Get("X-Forwarded-Proto"), "https") {
+		return true
+	}
+	return os.Getenv("COOKIE_SECURE") == "true"
+}
+
+// cookieSameSite: en local (HTTP, mismo "site" localhost) Lax basta.
+// En producción, front y API suelen ser dominios distintos: hace falta None + Secure o el navegador no manda la cookie en fetch.
+func cookieSameSite(secure bool) string {
+	if secure {
+		return "None"
+	}
+	return "Lax"
 }
 
 // Register maneja la solicitud de registro
@@ -50,7 +71,7 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	secure := c.Protocol() == "https" || os.Getenv("COOKIE_SECURE") == "true"
+	secure := cookieSecure(c)
 	c.Cookie(&fiber.Cookie{
 		Name:     middleware.AuthCookieName,
 		Value:    token,
@@ -58,7 +79,7 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 		MaxAge:   30 * 24 * 60 * 60,
 		HTTPOnly: true,
 		Secure:   secure,
-		SameSite: "Lax",
+		SameSite: cookieSameSite(secure),
 	})
 
 	return c.JSON(fiber.Map{"message": "Sesión iniciada"})
@@ -79,7 +100,7 @@ func (h *AuthHandler) Me(c *fiber.Ctx) error {
 
 // Logout borra la cookie de sesión (no requiere JWT válido).
 func (h *AuthHandler) Logout(c *fiber.Ctx) error {
-	secure := c.Protocol() == "https" || os.Getenv("COOKIE_SECURE") == "true"
+	secure := cookieSecure(c)
 	c.Cookie(&fiber.Cookie{
 		Name:     middleware.AuthCookieName,
 		Value:    "",
@@ -87,7 +108,7 @@ func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 		MaxAge:   -1,
 		HTTPOnly: true,
 		Secure:   secure,
-		SameSite: "Lax",
+		SameSite: cookieSameSite(secure),
 	})
 	return c.JSON(fiber.Map{"message": "Sesión cerrada"})
 }
