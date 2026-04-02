@@ -2,6 +2,8 @@ package main
 
 import (
 	"log"
+	"os"
+	"strings"
 
 	"github.com/JimcostDev/finances-api/config"
 	"github.com/JimcostDev/finances-api/routes"
@@ -12,10 +14,20 @@ import (
 func main() {
 	app := fiber.New()
 
-	// Configurar CORS
+	// CORS: credenciales necesarias para cookies cross-origin (añade orígenes en CORS_ORIGINS separados por coma)
+	allowOrigins := os.Getenv("CORS_ORIGINS")
+	if allowOrigins == "" {
+		allowOrigins = "https://finances.jimcostdev.com,http://localhost:4321,http://localhost:3000,http://127.0.0.1:4321"
+	}
+	parts := strings.Split(allowOrigins, ",")
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "https://finances.jimcostdev.com, http://localhost:4321",
-		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
+		AllowOrigins:     strings.Join(parts, ","),
+		AllowMethods:     "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
+		AllowCredentials: true,
 	}))
 
 	// Conectar a MongoDB.

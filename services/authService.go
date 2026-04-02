@@ -94,12 +94,12 @@ func (s *authService) LoginUser(ctx context.Context, req LoginRequest) (string, 
 		return "", errors.New("credenciales inválidas")
 	}
 
-	// 3. Generar JWT
+	// 3. Generar JWT (30 días; "id" como hex string para claims en el middleware)
 	token := jwt.New(jwt.SigningMethodHS256)
 	claims := token.Claims.(jwt.MapClaims)
-	claims["id"] = user.ID
+	claims["id"] = user.ID.Hex()
 	claims["email"] = user.Email
-	claims["exp"] = time.Now().Add(72 * time.Hour).Unix()
+	claims["exp"] = time.Now().Add(30 * 24 * time.Hour).Unix()
 
 	secretKey := os.Getenv("JWT_SECRET_KEY")
 	if secretKey == "" {

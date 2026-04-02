@@ -9,19 +9,28 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 )
 
+// tokenFromRequest obtiene el JWT: primero cookie HttpOnly, luego Authorization Bearer (compatibilidad).
+func tokenFromRequest(c *fiber.Ctx) string {
+	if t := c.Cookies(AuthCookieName); t != "" {
+		return t
+	}
+	authHeader := c.Get("Authorization")
+	if authHeader == "" {
+		return ""
+	}
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == authHeader {
+		return ""
+	}
+	return tokenString
+}
+
 // Protected es un middleware para verificar la autenticación con JWT.
 func Protected() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// Obtener el token del encabezado Authorization
-		authHeader := c.Get("Authorization")
-		if authHeader == "" {
+		tokenString := tokenFromRequest(c)
+		if tokenString == "" {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Token no proporcionado"})
-		}
-
-		// Verificar si el token tiene el prefijo "Bearer "
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		if tokenString == authHeader {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Formato de token inválido"})
 		}
 
 		// Leer la clave secreta desde las variables de entorno

@@ -14,15 +14,15 @@ func SetupRoutes(app *fiber.App) {
 
 	userRepo := repositories.NewUserRepository(config.DB)
 	authService := services.NewAuthService(userRepo)
-	authHandler := handlers.NewAuthHandler(authService)
 	reportRepo := repositories.NewReportRepository(config.DB)
 	reportService := services.NewReportService(reportRepo, userRepo)
+	userService := services.NewUserService(userRepo, reportRepo, dbClient, reportService)
+	authHandler := handlers.NewAuthHandler(authService, userService)
 	reportHandler := handlers.NewReportHandler(reportService)
 	categoryRepo := repositories.NewCategoryRepository(config.DB)
 	categoryService := services.NewCategoryService(categoryRepo)
 	categoryHandler := handlers.NewCategoryHandler(categoryService)
 
-	userService := services.NewUserService(userRepo, reportRepo, dbClient, reportService)
 	userHandler := handlers.NewUserHandler(userService)
 
 	AuthRoutes(app, authHandler)
